@@ -11,10 +11,20 @@ if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// মাল্টিপার্ট কনফিগারেশন আরও নিরাপদ করা হলো
+// Multer কনফিগারেশন যাতে ফাইলের সঠিক এক্সটেনশন বজায় থাকে
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
 const upload = multer({ 
-    dest: uploadDir,
-    limits: { fileSize: 10 * 1024 * 1024 } // সর্বোচ্চ ১০ মেগাবাইট লিমিট
+    storage: storage,
+    limits: { fileSize: 15 * 1024 * 1024 } 
 });
 
 app.get('/', (req, res) => {
@@ -40,6 +50,7 @@ app.post('/convert', upload.single('file'), (req, res) => {
             return res.status(500).send('Error: Failed to read uploaded file on server.');
         }
 
+        // LibreOffice কনভার্শন
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
             fs.unlink(inputPath, () => {}); // ইনপুট ফাইল মুছে ফেলা
 
@@ -56,7 +67,6 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
                 console.log("-> Conversion successful, sending file back...");
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-                    // ডাউনলোড শেষ হলে আউটপুট ফাইল মুছে ফেলব
                     fs.unlink(outputPath, () => {});
                 });
             });
@@ -64,7 +74,6 @@ app.post('/convert', upload.single('file'), (req, res) => {
     });
 });
 
-// গ্লোবাল এরর হ্যান্ডলার যাতে কোনো অবস্থাতেই ক্র্যাশ না করে
 app.use((err, req, res, next) => {
     console.error('-> Global Server Error:', err.stack);
     res.status(500).send('Error: Internal Server Crash occurred.');
