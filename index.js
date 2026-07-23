@@ -13,11 +13,14 @@ if (!fs.existsSync(uploadDir)){
 
 const upload = multer({ dest: uploadDir });
 
+// রুট চেক
 app.get('/', (req, res) => {
     res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
+// মূল কনভার্ট রাউট
 app.post('/convert', upload.single('file'), (req, res) => {
+    console.log("Received convert request!");
     if (!req.file) {
         return res.status(400).send('No file uploaded.');
     }
@@ -51,6 +54,11 @@ app.post('/convert', upload.single('file'), (req, res) => {
             });
         });
     });
+});
+
+// যদি কোনো কারণে রাউট ম্যাচ না করে তবে যেন Not Found না দেখিয়ে পরিষ্কার মেসেজ দেয়
+app.use((req, res) => {
+    res.status(404).send('API Endpoint Not Found on Server.');
 });
 
 const PORT = process.env.PORT || 10000;
