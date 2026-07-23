@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -13,7 +14,7 @@ if (!fs.existsSync(uploadDir)){
 const upload = multer({ dest: uploadDir });
 
 app.get('/', (req, res) => {
-    res.send('Smart Converter Server is Running Successfully!');
+    res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
 app.post('/convert', upload.single('file'), (req, res) => {
@@ -28,20 +29,20 @@ app.post('/convert', upload.single('file'), (req, res) => {
     fs.readFile(inputPath, (err, fileData) => {
         if (err) {
             fs.unlink(inputPath, () => {});
-            return res.status(500).send('Error reading uploaded file.');
+            return res.status(500).send('Error reading file.');
         }
 
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
             fs.unlink(inputPath, () => {});
 
             if (convErr) {
-                console.error('LibreOffice Conversion error:', convErr);
-                return res.status(500).send('Conversion error: ' + convErr.message);
+                console.error('Conversion error:', convErr);
+                return res.status(500).send('Conversion failed.');
             }
 
             fs.writeFile(outputPath, done, (writeErr) => {
                 if (writeErr) {
-                    return res.status(500).send('Error saving converted file.');
+                    return res.status(500).send('Error saving file.');
                 }
 
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
