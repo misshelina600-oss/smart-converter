@@ -1,8 +1,8 @@
 const express = require('express');
 const multer = require('multer');
+const libre = require('libreoffice-convert');
 const fs = require('fs');
 const path = require('path');
-const { convert } = require('libreoffice-convert'); // অথবা ব্যাকআপ মেথড
 
 const app = express();
 
@@ -44,33 +44,37 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
     fs.readFile(inputPath, (err, fileData) => {
         if (err) {
+            console.log("-> Error reading file:", err);
             fs.unlink(inputPath, () => {});
-            return res.status(500).send('Error reading file.');
+            return res.status(500).send('Error reading uploaded file.');
         }
 
-        // লিনাক্সের ডিফল্ট বাইনারি পথ সেট করে কনভার্ট করার চেষ্টা
-        const matchingBinaries = ['soffice', '/usr/bin/soffice', '/usr/local/bin/soffice'];
-        
-        convert(fileData, '.pdf', undefined, (convErr, done) => {
+        libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
             fs.unlink(inputPath, () => {});
 
             if (convErr) {
-                console.error('-> Conversion fallback error:', convErr);
-                // যদি LibreOffice না পাওয়া যায়, তবে ক্লাউড বা অল্টারনেটিভ ফ্রি রেন্ডারিং ব্যবহার করা নিরাপদ
-                return res.status(500).send('Error: Server missing document conversion engine binary.');
+                console.error('-> LibreOffice Conversion error:', convErr);
+                return res.status(500).send('Error: LibreOffice failed to convert this file.');
             }
 
             fs.writeFile(outputPath, done, (writeErr) => {
                 if (writeErr) {
-                    return res.status(500).send('Error saving PDF.');
+                    console.log("-> Error saving PDF:", writeErr);
+                    return res.status(500).send('Error saving converted PDF.');
                 }
 
+                console.log("-> Conversion successful, sending file back...");
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
                     fs.unlink(outputPath, () => {});
                 });
             });
         });
     });
+});
+
+app.use((err, req, res, next) => {
+    console.error('-> Global Server Error:', err.stack);
+    res.status(500).send('Error: Internal Server Crash occurred.');
 });
 
 const PORT = process.env.PORT || 10000;
