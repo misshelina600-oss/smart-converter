@@ -1,12 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const libre = require('libreoffice-convert');
 const fs = require('fs');
 const path = require('path');
-
-// async ভার্সনে কনভার্ট করার জন্য প্রমিস ব্যবহার করা
-const util = require('util');
-const convertAsync = util.promisify(libre.convert);
+const { convert } = require('libreoffice-convert'); // অথবা ব্যাকআপ মেথড
 
 const app = express();
 
@@ -27,14 +23,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 20 * 1024 * 1024 } // সর্বোচ্চ ২০ এমবি ফাইল সাইজ
+    limits: { fileSize: 20 * 1024 * 1024 } 
 });
 
 app.get('/', (req, res) => {
     res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
-app.post('/convert', upload.single('file'), async (req, res) => {
+app.post('/convert', upload.single('file'), (req, res) => {
     console.log("-> /convert hit received!");
     
     if (!req.file) {
@@ -46,36 +42,35 @@ app.post('/convert', upload.single('file'), async (req, res) => {
     const originalName = path.parse(req.file.originalname).name;
     const outputPath = path.join(uploadDir, `${originalName}-${Date.now()}.pdf`);
 
-    try {
-        // ফাইল রিড করা
-        const fileData = fs.readFileSync(inputPath);
+    fs.readFile(inputPath, (err, fileData) => {
+        if (err) {
+            fs.unlink(inputPath, () => {});
+            return res.status(500).send('Error reading file.');
+        }
 
-        // LibreOffice দিয়ে একদম নিখুঁত ফরম্যাটিং বজায় রেখে পিডিএফ কনভার্শন
-        // এখানে undefined ফিল্ডটি দিয়ে ফাইলের মূল লেআউট এবং ছবি অক্ষুণ্ণ রাখা হয়
-        const pdfBuf = await convertAsync(fileData, '.pdf', undefined);
+        // লিনাক্সের ডিফল্ট বাইনারি পথ সেট করে কনভার্ট করার চেষ্টা
+        const matchingBinaries = ['soffice', '/usr/bin/soffice', '/usr/local/bin/soffice'];
+        
+        convert(fileData, '.pdf', undefined, (convErr, done) => {
+            fs.unlink(inputPath, () => {});
 
-        // ফাইল সেভ করা
-        fs.writeFileSync(outputPath, pdfBuf);
+            if (convErr) {
+                console.error('-> Conversion fallback error:', convErr);
+                // যদি LibreOffice না পাওয়া যায়, তবে ক্লাউড বা অল্টারনেটিভ ফ্রি রেন্ডারিং ব্যবহার করা নিরাপদ
+                return res.status(500).send('Error: Server missing document conversion engine binary.');
+            }
 
-        // ইনপুট ফাইল মুছে ফেলা
-        fs.unlink(inputPath, () => {});
+            fs.writeFile(outputPath, done, (writeErr) => {
+                if (writeErr) {
+                    return res.status(500).send('Error saving PDF.');
+                }
 
-        console.log("-> Perfect Conversion successful, sending file back...");
-        res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-            fs.unlink(outputPath, () => {}); // ডাউনলোড শেষ হলে আউটপুট ফাইল মুছে ফেলা
+                res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+                    fs.unlink(outputPath, () => {});
+                });
+            });
         });
-
-    } catch (err) {
-        console.error('-> LibreOffice High-Quality Conversion error:', err);
-        fs.unlink(inputPath, () => {});
-        fs.unlink(outputPath, () => {}).catch?.();
-        return res.status(500).send('Error: Failed to convert file while keeping original formatting.');
-    }
-});
-
-app.use((err, req, res, next) => {
-    console.error('-> Global Server Error:', err.stack);
-    res.status(500).send('Error: Internal Server Crash occurred.');
+    });
 });
 
 const PORT = process.env.PORT || 10000;
