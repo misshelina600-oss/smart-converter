@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# লিনাক্সে LibreOffice এবং প্রয়োজনীয় প্যাকেজ ইন্সটল করা
+# লিনাক্সে LibreOffice, Writer এবং Java এনভায়রনমেন্ট একসাথে ইনস্টল করা (যা soffice বাইনারির জন্য জরুরি)
 RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
