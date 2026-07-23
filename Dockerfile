@@ -1,6 +1,5 @@
 FROM node:18-slim
 
-# লিনাক্সে LibreOffice এবং প্রয়োজনীয় প্যাকেজ ইন্সটল করা
 RUN apt-get update && apt-get install -y \
     libreoffice \
     && rm -rf /var/lib/apt/lists/*
