@@ -1,8 +1,12 @@
 const express = require('express');
 const multer = require('multer');
-const docxPdf = require('docx-pdf');
+const libre = require('libreoffice-convert');
 const fs = require('fs');
 const path = require('path');
+
+// async ভার্সনে কনভার্ট করার জন্য প্রমিস ব্যবহার করা
+const util = require('util');
+const convertAsync = util.promisify(libre.convert);
 
 const app = express();
 
@@ -23,14 +27,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 15 * 1024 * 1024 } 
+    limits: { fileSize: 20 * 1024 * 1024 } // সর্বোচ্চ ২০ এমবি ফাইল সাইজ
 });
 
 app.get('/', (req, res) => {
     res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
-app.post('/convert', upload.single('file'), (req, res) => {
+app.post('/convert', upload.single('file'), async (req, res) => {
     console.log("-> /convert hit received!");
     
     if (!req.file) {
@@ -42,20 +46,36 @@ app.post('/convert', upload.single('file'), (req, res) => {
     const originalName = path.parse(req.file.originalname).name;
     const outputPath = path.join(uploadDir, `${originalName}-${Date.now()}.pdf`);
 
-    // docx-pdf দিয়ে কনভার্শন
-    docxPdf(inputPath, outputPath, (err, result) => {
-        fs.unlink(inputPath, () => {}); // ইনপুট ফাইল ডিলিট
+    try {
+        // ফাইল রিড করা
+        const fileData = fs.readFileSync(inputPath);
 
-        if (err) {
-            console.error('-> Conversion error:', err);
-            return res.status(500).send('Error: Failed to convert this file.');
-        }
+        // LibreOffice দিয়ে একদম নিখুঁত ফরম্যাটিং বজায় রেখে পিডিএফ কনভার্শন
+        // এখানে undefined ফিল্ডটি দিয়ে ফাইলের মূল লেআউট এবং ছবি অক্ষুণ্ণ রাখা হয়
+        const pdfBuf = await convertAsync(fileData, '.pdf', undefined);
 
-        console.log("-> Conversion successful, sending file back...");
+        // ফাইল সেভ করা
+        fs.writeFileSync(outputPath, pdfBuf);
+
+        // ইনপুট ফাইল মুছে ফেলা
+        fs.unlink(inputPath, () => {});
+
+        console.log("-> Perfect Conversion successful, sending file back...");
         res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-            fs.unlink(outputPath, () => {}); // আউটপুট ফাইল ডিলিট
+            fs.unlink(outputPath, () => {}); // ডাউনলোড শেষ হলে আউটপুট ফাইল মুছে ফেলা
         });
-    });
+
+    } catch (err) {
+        console.error('-> LibreOffice High-Quality Conversion error:', err);
+        fs.unlink(inputPath, () => {});
+        fs.unlink(outputPath, () => {}).catch?.();
+        return res.status(500).send('Error: Failed to convert file while keeping original formatting.');
+    }
+});
+
+app.use((err, req, res, next) => {
+    console.error('-> Global Server Error:', err.stack);
+    res.status(500).send('Error: Internal Server Crash occurred.');
 });
 
 const PORT = process.env.PORT || 10000;
