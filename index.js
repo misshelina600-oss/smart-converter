@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const libre = require('libreoffice-convert');
+const docxPdf = require('docx-pdf');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,7 +11,6 @@ if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Multer কনফিগারেশন যাতে ফাইলের সঠিক এক্সটেনশন বজায় থাকে
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, uploadDir);
@@ -43,40 +42,20 @@ app.post('/convert', upload.single('file'), (req, res) => {
     const originalName = path.parse(req.file.originalname).name;
     const outputPath = path.join(uploadDir, `${originalName}-${Date.now()}.pdf`);
 
-    fs.readFile(inputPath, (err, fileData) => {
+    // docx-pdf দিয়ে কনভার্শন
+    docxPdf(inputPath, outputPath, (err, result) => {
+        fs.unlink(inputPath, () => {}); // ইনপুট ফাইল ডিলিট
+
         if (err) {
-            console.log("-> Error reading uploaded file:", err);
-            fs.unlink(inputPath, () => {});
-            return res.status(500).send('Error: Failed to read uploaded file on server.');
+            console.error('-> Conversion error:', err);
+            return res.status(500).send('Error: Failed to convert this file.');
         }
 
-        // LibreOffice কনভার্শন
-        libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
-            fs.unlink(inputPath, () => {}); // ইনপুট ফাইল মুছে ফেলা
-
-            if (convErr) {
-                console.error('-> LibreOffice Conversion error:', convErr);
-                return res.status(500).send('Error: LibreOffice failed to convert this file.');
-            }
-
-            fs.writeFile(outputPath, done, (writeErr) => {
-                if (writeErr) {
-                    console.log("-> Error saving converted PDF:", writeErr);
-                    return res.status(500).send('Error: Failed to save converted PDF.');
-                }
-
-                console.log("-> Conversion successful, sending file back...");
-                res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-                    fs.unlink(outputPath, () => {});
-                });
-            });
+        console.log("-> Conversion successful, sending file back...");
+        res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+            fs.unlink(outputPath, () => {}); // আউটপুট ফাইল ডিলিট
         });
     });
-});
-
-app.use((err, req, res, next) => {
-    console.error('-> Global Server Error:', err.stack);
-    res.status(500).send('Error: Internal Server Crash occurred.');
 });
 
 const PORT = process.env.PORT || 10000;
