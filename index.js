@@ -5,8 +5,6 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-
-// আপলোড ফোল্ডার না থাকলে নিজে তৈরি করে নেবে
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -34,10 +32,10 @@ app.post('/convert', upload.single('file'), (req, res) => {
         }
 
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
-            fs.unlink(inputPath, () => {}); // ইনপুট ফাইল মুছে ফেলা
+            fs.unlink(inputPath, () => {});
 
             if (convErr) {
-                console.error('Conversion error:', convErr);
+                console.error('LibreOffice Conversion error:', convErr);
                 return res.status(500).send('Conversion error: ' + convErr.message);
             }
 
@@ -47,7 +45,6 @@ app.post('/convert', upload.single('file'), (req, res) => {
                 }
 
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-                    // ডাউনলোড শেষ হলে আউটপুট ফাইল মুছে ফেলা
                     fs.unlink(outputPath, () => {});
                 });
             });
