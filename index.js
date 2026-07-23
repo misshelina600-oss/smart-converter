@@ -11,18 +11,22 @@ if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const upload = multer({ dest: uploadDir });
+// মাল্টিপার্ট কনফিগারেশন আরও নিরাপদ করা হলো
+const upload = multer({ 
+    dest: uploadDir,
+    limits: { fileSize: 10 * 1024 * 1024 } // সর্বোচ্চ ১০ মেগাবাইট লিমিট
+});
 
-// রুট চেক
 app.get('/', (req, res) => {
     res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
-// মূল কনভার্ট রাউট
 app.post('/convert', upload.single('file'), (req, res) => {
-    console.log("Received convert request!");
+    console.log("-> /convert hit received!");
+    
     if (!req.file) {
-        return res.status(400).send('No file uploaded.');
+        console.log("-> Error: No file found in request.");
+        return res.status(400).send('Error: No file uploaded by client.');
     }
 
     const inputPath = req.file.path;
@@ -31,24 +35,28 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
     fs.readFile(inputPath, (err, fileData) => {
         if (err) {
+            console.log("-> Error reading uploaded file:", err);
             fs.unlink(inputPath, () => {});
-            return res.status(500).send('Error reading file.');
+            return res.status(500).send('Error: Failed to read uploaded file on server.');
         }
 
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
-            fs.unlink(inputPath, () => {});
+            fs.unlink(inputPath, () => {}); // ইনপুট ফাইল মুছে ফেলা
 
             if (convErr) {
-                console.error('Conversion error:', convErr);
-                return res.status(500).send('Conversion failed.');
+                console.error('-> LibreOffice Conversion error:', convErr);
+                return res.status(500).send('Error: LibreOffice failed to convert this file.');
             }
 
             fs.writeFile(outputPath, done, (writeErr) => {
                 if (writeErr) {
-                    return res.status(500).send('Error saving file.');
+                    console.log("-> Error saving converted PDF:", writeErr);
+                    return res.status(500).send('Error: Failed to save converted PDF.');
                 }
 
+                console.log("-> Conversion successful, sending file back...");
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+                    // ডাউনলোড শেষ হলে আউটপুট ফাইল মুছে ফেলব
                     fs.unlink(outputPath, () => {});
                 });
             });
@@ -56,12 +64,13 @@ app.post('/convert', upload.single('file'), (req, res) => {
     });
 });
 
-// যদি কোনো কারণে রাউট ম্যাচ না করে তবে যেন Not Found না দেখিয়ে পরিষ্কার মেসেজ দেয়
-app.use((req, res) => {
-    res.status(404).send('API Endpoint Not Found on Server.');
+// গ্লোবাল এরর হ্যান্ডলার যাতে কোনো অবস্থাতেই ক্র্যাশ না করে
+app.use((err, req, res, next) => {
+    console.error('-> Global Server Error:', err.stack);
+    res.status(500).send('Error: Internal Server Crash occurred.');
 });
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running smoothly on port ${PORT}`);
 });
