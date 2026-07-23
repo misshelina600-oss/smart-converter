@@ -1,9 +1,6 @@
 services:
   - type: web
     name: smart-converter
-    env: node
-    buildCommand: npm install
-    startCommand: node index.js
-    envVars:
-      - key: NODE_VERSION
-        value: 18.16.0
+    env: docker
+    region: oregon # আপনার পছন্দের রিজিওন রাখতে পারেন
+    plan: free
