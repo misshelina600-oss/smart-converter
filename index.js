@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { execFile } = require('child_process');
+const libre = require('libreoffice-convert');
 const fs = require('fs');
 const path = require('path');
 
@@ -17,7 +17,7 @@ const upload = multer({
 });
 
 app.get('/', (req, res) => {
-    res.status(200).send('Smart Converter Server is Running Smoothly!');
+    res.status(200).send('Smart Converter Server is Running!');
 });
 
 app.post('/convert', upload.single('file'), async (req, res) => {
@@ -27,6 +27,7 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         return res.status(400).send('Error: No file uploaded by client.');
     }
 
+    const inputBuffer = req.file.buffer;
     const ext = path.extname(req.file.originalname).toLowerCase();
     const originalName = path.parse(req.file.originalname).name;
 
@@ -35,46 +36,23 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         return res.status(400).send('Error: Unsupported file format.');
     }
 
-    const uniqueId = Date.now();
-    const inputPath = path.join(uploadDir, `input-${uniqueId}${ext}`);
-    const outputPdfPath = path.join(uploadDir, `input-${uniqueId}.pdf`);
+    libre.convert(inputBuffer, '.pdf', undefined, (err, doneBuffer) => {
+        if (err) {
+            console.error('-> Conversion Error:', err);
+            return res.status(500).send('Error: Failed to convert document.');
+        }
 
-    try {
-        fs.writeFileSync(inputPath, req.file.buffer);
+        const outputFileName = `Converted-${Date.now()}.pdf`;
+        const outputPath = path.join(uploadDir, outputFileName);
 
-        execFile('soffice', [
-            '--headless',
-            '--convert-to', 'pdf',
-            '--outdir', uploadDir,
-            inputPath
-        ], { timeout: 60000 }, (error, stdout, stderr) => {
+        fs.writeFileSync(outputPath, doneBuffer);
 
-            if (fs.existsSync(inputPath)) {
-                fs.unlinkSync(inputPath);
-            }
-
-            if (error) {
-                console.error('-> Conversion Error:', error);
-                if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
-                return res.status(500).send('Error: Failed to convert document.');
-            }
-
-            if (!fs.existsSync(outputPdfPath)) {
-                return res.status(500).send('Error: Converted PDF not found.');
-            }
-
-            console.log('-> Conversion successful, sending file...');
-            res.download(outputPdfPath, `${originalName}.pdf`, (dlErr) => {
-                if (dlErr) console.error('-> Download error:', dlErr);
-                if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
-            });
+        console.log('-> Conversion successful, sending file...');
+        res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+            if (dlErr) console.error('-> Download error:', dlErr);
+            fs.unlink(outputPath, () => {});
         });
-
-    } catch (e) {
-        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-        console.error('-> Process Error:', e);
-        return res.status(500).send('Error: ' + e.message);
-    }
+    });
 });
 
 const PORT = process.env.PORT || 10000;
