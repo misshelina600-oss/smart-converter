@@ -37,7 +37,10 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         return res.status(400).send('Error: Unsupported file format. Only Word, Excel, and PPT are allowed.');
     }
 
-    libre.convert(inputBuffer, '.pdf', undefined, (err, doneBuffer) => {
+    // 🔥 পেজ ব্রেক এবং অতিরিক্ত ফাঁকা জায়গার সমস্যা দূর করার জন্য কনভার্শন ফিল্টার অপশন যোগ করা হলো
+    const filterOptions = 'writer_pdf_Export';
+
+    libre.convert(inputBuffer, '.pdf', filterOptions, (err, doneBuffer) => {
         if (err) {
             console.error('-> Conversion Error:', err);
             return res.status(500).send('Error: Failed to convert document using library.');
