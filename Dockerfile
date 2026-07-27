@@ -1,5 +1,6 @@
 FROM node:18-slim
 
+# লিনাক্স এনভায়রনমেন্টে LibreOffice এবং প্রয়োজনীয় ফন্ট ইনস্টল করা
 RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
