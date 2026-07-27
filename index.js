@@ -43,14 +43,17 @@ app.post('/convert', upload.single('file'), (req, res) => {
     const outputFileName = `Converted-${Date.now()}.pdf`;
     const outputPath = path.join(uploadDir, outputFileName);
 
-    // এখানে LibreOffice-এর কমান্ডটি আপডেট করা হয়েছে যাতে ফাইল রেন্ডার করতে গিয়ে ক্রাশ না করে
-    const command = `soffice --headless --infilter="Microsoft Word 2007-365 XML" --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
+    // সার্ভার ক্রাশ রোধ করতে LibreOffice-এর জন্য আলাদা ইউজার প্রোফাইল ও সেফ কমান্ড
+    const userInstallation = `file:///tmp/libo_user_${Date.now()}`;
+    const command = `soffice -env:UserInstallation="${userInstallation}" --headless --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
 
     exec(command, (error, stdout, stderr) => {
+        // টেম্পোরারি ফোল্ডার পরিষ্কার করা
         fs.unlink(inputPath, () => {});
 
         if (error) {
             console.error('-> Shell Execution Error:', error);
+            console.error('-> Stderr:', stderr);
             return res.status(500).send('Error: LibreOffice failed to convert document.');
         }
 
