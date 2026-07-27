@@ -1,21 +1,13 @@
 FROM node:18-slim
 
-# লিনাক্স এনভায়রনমেন্টে LibreOffice এবং প্রয়োজনীয় ফন্ট ইনস্টল করা
-RUN apt-get update && apt-get install -y \
-    libreoffice \
-    libreoffice-writer \
-    libreoffice-calc \
-    libreoffice-impress \
-    default-jre \
-    fontconfig \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY package*.json ./
+
 RUN npm install
 
 COPY . .
 
 EXPOSE 10000
-CMD ["node", "index.js"]
+
+CMD ["npm", "start"]
