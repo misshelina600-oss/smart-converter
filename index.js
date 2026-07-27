@@ -7,7 +7,7 @@ const path = require('path');
 const app = express();
 
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)){
+if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
@@ -21,9 +21,9 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ 
+const upload = multer({
     storage: storage,
-    limits: { fileSize: 20 * 1024 * 1024 } 
+    limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 app.get('/', (req, res) => {
@@ -31,25 +31,27 @@ app.get('/', (req, res) => {
 });
 
 app.post('/convert', upload.single('file'), (req, res) => {
-    console.log("-> /convert hit received!");
-    
+    console.log('-> /convert hit received!');
+
     if (!req.file) {
-        console.log("-> Error: No file found in request.");
+        console.log('-> Error: No file found in request.');
         return res.status(400).send('Error: No file uploaded by client.');
     }
 
     const inputPath = req.file.path;
     const originalName = path.parse(req.file.originalname).name;
-    const outputPath = path.join(uploadDir, `${originalName}-${Date.now()}.pdf`);
+    const outputFileName = `${originalName}-${Date.now()}.pdf`;
+    const outputPath = path.join(uploadDir, outputFileName);
 
     fs.readFile(inputPath, (err, fileData) => {
         if (err) {
-            console.log("-> Error reading file:", err);
+            console.log('-> Error reading input file:', err);
             fs.unlink(inputPath, () => {});
             return res.status(500).send('Error reading uploaded file.');
         }
 
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
+            // ইনপুট ফাইল সাথে সাথে মুছে ফেলা নিরাপদ
             fs.unlink(inputPath, () => {});
 
             if (convErr) {
@@ -59,12 +61,16 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
             fs.writeFile(outputPath, done, (writeErr) => {
                 if (writeErr) {
-                    console.log("-> Error saving PDF:", writeErr);
+                    console.error('-> Error saving PDF:', writeErr);
                     return res.status(500).send('Error saving converted PDF.');
                 }
 
-                console.log("-> Conversion successful, sending file back...");
+                console.log('-> Conversion successful, sending file back...');
                 res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+                    if (dlErr) {
+                        console.error('-> Download transmission error:', dlErr);
+                    }
+                    // ডাউনলোড শেষ হওয়ার পর সার্ভার থেকে আউটপুট ফাইল ডিলিট করে দেওয়া
                     fs.unlink(outputPath, () => {});
                 });
             });
