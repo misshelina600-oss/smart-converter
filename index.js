@@ -43,8 +43,8 @@ app.post('/convert', upload.single('file'), (req, res) => {
     const outputFileName = `Converted-${Date.now()}.pdf`;
     const outputPath = path.join(uploadDir, outputFileName);
 
-    // LibreOffice দিয়ে নিখুঁত ফরম্যাটিং ও ছবিসহ কনভার্ট করার কমান্ড
-    const command = `soffice --headless --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
+    // এখানে LibreOffice-এর কমান্ডটি আপডেট করা হয়েছে যাতে ফাইল রেন্ডার করতে গিয়ে ক্রাশ না করে
+    const command = `soffice --headless --infilter="Microsoft Word 2007-365 XML" --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
 
     exec(command, (error, stdout, stderr) => {
         fs.unlink(inputPath, () => {});
