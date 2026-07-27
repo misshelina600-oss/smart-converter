@@ -1,9 +1,8 @@
 const express = require('express');
 const multer = require('multer');
+const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
-const mammoth = require('mammoth'); // ওয়ার্ড ফাইলের টেক্সট পড়ার জন্য
 
 const app = express();
 
@@ -31,7 +30,7 @@ app.get('/', (req, res) => {
     res.status(200).send('Smart Converter Server is Running Successfully!');
 });
 
-app.post('/convert', upload.single('file'), async (req, res) => {
+app.post('/convert', upload.single('file'), (req, res) => {
     console.log('-> /convert hit received!');
 
     if (!req.file) {
@@ -44,29 +43,23 @@ app.post('/convert', upload.single('file'), async (req, res) => {
     const outputFileName = `Converted-${Date.now()}.pdf`;
     const outputPath = path.join(uploadDir, outputFileName);
 
-    try {
-        // ১. Mammoth দিয়ে ওয়ার্ড ফাইল থেকে পরিষ্কার টেক্সট এক্সট্রাক্ট করা
-        const result = await mammoth.extractRawText({ path: inputPath });
-        const extractedText = result.value; // ফাইলের ভেতরের সব টেক্সট
+    // LibreOffice দিয়ে নিখুঁত ফরম্যাটিং ও ছবিসহ কনভার্ট করার কমান্ড
+    const command = `soffice --headless --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
 
-        // ইনপুট ফাইল মুছে ফেলা
+    exec(command, (error, stdout, stderr) => {
         fs.unlink(inputPath, () => {});
 
-        // ২. PDFKit দিয়ে সরাসরি পিডিএফ ডকুমেন্ট জেনারেট করা
-        const doc = new PDFDocument({ margin: 50 });
-        const writeStream = fs.createWriteStream(outputPath);
-        doc.pipe(writeStream);
+        if (error) {
+            console.error('-> Shell Execution Error:', error);
+            return res.status(500).send('Error: LibreOffice failed to convert document.');
+        }
 
-        // ফাইলে টেক্সট যোগ করা
-        doc.fontSize(12).text(extractedText, {
-            align: 'left',
-            lineGap: 5
-        });
+        const generatedPdfName = path.basename(inputPath, path.extname(inputPath)) + '.pdf';
+        const generatedPdfPath = path.join(uploadDir, generatedPdfName);
 
-        doc.end();
+        if (fs.existsSync(generatedPdfPath)) {
+            fs.renameSync(generatedPdfPath, outputPath);
 
-        // রাইট শেষ হওয়ার পর ক্লায়েন্টে পিডিএফ পাঠিয়ে দেওয়া
-        writeStream.on('finish', () => {
             console.log('-> Conversion successful, sending file back...');
             res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
                 if (dlErr) {
@@ -74,18 +67,11 @@ app.post('/convert', upload.single('file'), async (req, res) => {
                 }
                 fs.unlink(outputPath, () => {});
             });
-        });
-
-    } catch (error) {
-        console.error('-> Conversion Error:', error);
-        fs.unlink(inputPath, () => {});
-        return res.status(500).send('Error: Failed to process document structure.');
-    }
-});
-
-app.use((err, req, res, next) => {
-    console.error('-> Global Server Error:', err.stack);
-    res.status(500).send('Error: Internal Server Crash occurred.');
+        } else {
+            console.error('-> Converted PDF not found.');
+            return res.status(500).send('Error: PDF generation failed.');
+        }
+    });
 });
 
 const PORT = process.env.PORT || 10000;
