@@ -42,7 +42,6 @@ app.post('/convert', upload.single('file'), async (req, res) => {
     try {
         fs.writeFileSync(inputPath, req.file.buffer);
 
-        // সার্ভারের নিজস্ব LibreOffice ইঞ্জিন দিয়ে ফাইল কনভার্ট করা হচ্ছে
         execFile('soffice', [
             '--headless',
             '--convert-to', 'pdf',
