@@ -21,7 +21,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/convert', upload.single('file'), async (req, res) => {
-    console.log('-> Multi-format convert hit received!');
+    console.log('-> Multi-format convert hit received with strict formatting!');
 
     if (!req.file) {
         return res.status(400).send('Error: No file uploaded by client.');
@@ -32,7 +32,7 @@ app.post('/convert', upload.single('file'), async (req, res) => {
 
     const supportedExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
     if (!supportedExts.includes(ext)) {
-        return res.status(400).send('Error: Unsupported file format. Only Word, Excel, and PPT are allowed.');
+        return res.status(400).send('Error: Unsupported file format.');
     }
 
     const uniqueId = Date.now();
@@ -40,46 +40,43 @@ app.post('/convert', upload.single('file'), async (req, res) => {
     const outputPdfPath = path.join(uploadDir, `input-${uniqueId}.pdf`);
 
     try {
-        // ফাইলটি সাময়িকভাবে সার্ভারে সেভ করা হচ্ছে যাতে LibreOffice সরাসরি প্রসেস করতে পারে
         fs.writeFileSync(inputPath, req.file.buffer);
 
-        // 🔥 সরাসরি সিস্টেম লেভেলে LibreOffice হেডলেস কমান্ড ব্যবহার করা হচ্ছে যা অরিজিনাল ফরম্যাট ও লেআউট হুবহু বজায় রাখবে
+        // 🔥 এখানে LibreOffice কে কঠোরভাবে বলে দেওয়া হচ্ছে যেন ফাইলের অরিজিনাল পেজ সাইজ ও মার্জিন কোনোভাবেই পরিবর্তন না করে
         execFile('soffice', [
             '--headless',
-            '--convert-to', 'pdf',
+            '--nodefault',
+            '--nofirststartwizard',
+            '--invisible',
+            '--convert-to', 'pdf:writer_pdf_Export',
             '--outdir', uploadDir,
             inputPath
         ], { timeout: 60000 }, (error, stdout, stderr) => {
-            
-            // ইনপুট ফাইল মুছে ফেলা হচ্ছে
+
             if (fs.existsSync(inputPath)) {
                 fs.unlinkSync(inputPath);
             }
 
             if (error) {
-                console.error('-> Conversion Error:', error);
+                console.error('-> Strict Conversion Error:', error);
                 if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
-                return res.status(500).send('Error: Failed to convert document layout.');
+                return res.status(500).send('Error: Failed to maintain exact document format.');
             }
 
             if (!fs.existsSync(outputPdfPath)) {
-                return res.status(500).send('Error: PDF conversion failed to generate output file.');
+                return res.status(500).send('Error: Converted PDF not found.');
             }
 
-            console.log('-> Conversion successful, sending file back...');
+            console.log('-> Exact format conversion successful, sending file...');
             res.download(outputPdfPath, `${originalName}.pdf`, (dlErr) => {
-                if (dlErr) {
-                    console.error('-> Download error:', dlErr);
-                }
-                if (fs.existsSync(outputPdfPath)) {
-                    fs.unlinkSync(outputPdfPath);
-                }
+                if (dlErr) console.error('-> Download error:', dlErr);
+                if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
             });
         });
 
     } catch (e) {
         if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-        console.error('-> Server Process Error:', e);
+        console.error('-> Process Error:', e);
         return res.status(500).send('Error: ' + e.message);
     }
 });
