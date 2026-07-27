@@ -4,6 +4,9 @@ RUN apt-get update && apt-get install -y \
     libreoffice \
     libreoffice-writer \
     default-jre \
+    fontconfig \
+    ttf-mscorefonts-installer \
+    && fc-cache -f -v \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
