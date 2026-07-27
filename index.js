@@ -12,7 +12,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 const upload = multer({
-    storage: multer.memoryStorage(), // ফাইল মেমোরিতে প্রসেস হবে, সার্ভারে জ্যাম লাগবে না
+    storage: multer.memoryStorage(),
     limits: { fileSize: 25 * 1024 * 1024 }
 });
 
@@ -31,14 +31,13 @@ app.post('/convert', upload.single('file'), async (req, res) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     const originalName = path.parse(req.file.originalname).name;
 
-    // সমর্থনিত ফরম্যাট চেক: Word (.doc, .docx), Excel (.xls, .xlsx), PowerPoint (.ppt, .pptx)
     const supportedExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
     if (!supportedExts.includes(ext)) {
         return res.status(400).send('Error: Unsupported file format. Only Word, Excel, and PPT are allowed.');
     }
 
-    // 🔥 পেজ ব্রেক এবং অতিরিক্ত ফাঁকা জায়গার সমস্যা দূর করার জন্য কনভার্শন ফিল্টার অপশন যোগ করা হলো
-    const filterOptions = 'writer_pdf_Export';
+    // 🔥 পেজ ব্রেক এবং মাঝখানের ফাঁকা জায়গার সমস্যা সমাধানের জন্য A4 পেজ প্রপার্টি ফিল্টার যুক্ত করা হলো
+    const filterOptions = 'writer_pdf_Export:{"PageSize":{"type":"long","value":0},"PaperFormat":{"type":"string","value":"A4"}}';
 
     libre.convert(inputBuffer, '.pdf', filterOptions, (err, doneBuffer) => {
         if (err) {
