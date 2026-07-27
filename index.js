@@ -1,11 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const libre = require('libreoffice-convert');
+const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-
-// লিনাক্স/ডকার কন্টেইনারের জন্য soffice বাইনারি পাথ সেট করে দেওয়া
-libre.binPath = '/usr/bin/soffice';
 
 const app = express();
 
@@ -43,57 +40,38 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
     const inputPath = req.file.path;
     const originalName = path.parse(req.file.originalname).name;
-    
-    // ফাইলের নামের স্পেস বা বিশেষ ক্যারেক্টারজনিত সমস্যা এড়াতে সেফ ইনপুট পাথ তৈরি
-    const safeInputPath = path.join(uploadDir, `input-${Date.now()}.docx`);
     const outputFileName = `Converted-${Date.now()}.pdf`;
     const outputPath = path.join(uploadDir, outputFileName);
 
-    // ফাইল রিনেম করে নিরাপদ পথে রূপান্তর করা
-    try {
-        fs.renameSync(inputPath, safeInputPath);
-    } catch (e) {
-        console.log('-> Error renaming file:', e);
-    }
+    // LibreOffice কে হেডলেস মোডে ফন্ট ایرর ইগ্নোর করার ফ্ল্যাগসহ চালানো
+    const command = `soffice --headless --nologo --nolockcheck --nodefault --convert-to pdf --outdir "${uploadDir}" "${inputPath}"`;
 
-    fs.readFile(safeInputPath, (err, fileData) => {
-        if (err) {
-            console.log('-> Error reading input file:', err);
-            fs.unlink(safeInputPath, () => {});
-            return res.status(500).send('Error reading uploaded file.');
+    exec(command, (error, stdout, stderr) => {
+        fs.unlink(inputPath, () => {}); // ইনপুট ফাইল মুছে ফেলা
+
+        if (error) {
+            console.error('-> Shell Execution Error:', error);
+            return res.status(500).send('Error: LibreOffice conversion failed due to file structure.');
         }
 
-        libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
-            // ইনপুট ফাইল সাথে সাথে মুছে ফেলা নিরাপদ
-            fs.unlink(safeInputPath, () => {});
+        const generatedPdfName = path.basename(inputPath, path.extname(inputPath)) + '.pdf';
+        const generatedPdfPath = path.join(uploadDir, generatedPdfName);
 
-            if (convErr) {
-                console.error('-> LibreOffice Conversion error:', convErr);
-                return res.status(500).send('Error: LibreOffice failed to convert this file.');
-            }
+        if (fs.existsSync(generatedPdfPath)) {
+            fs.renameSync(generatedPdfPath, outputPath);
 
-            fs.writeFile(outputPath, done, (writeErr) => {
-                if (writeErr) {
-                    console.error('-> Error saving PDF:', writeErr);
-                    return res.status(500).send('Error saving converted PDF.');
+            console.log('-> Conversion successful, sending file back...');
+            res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
+                if (dlErr) {
+                    console.error('-> Download error:', dlErr);
                 }
-
-                console.log('-> Conversion successful, sending file back...');
-                res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-                    if (dlErr) {
-                        console.error('-> Download transmission error:', dlErr);
-                    }
-                    // ডাউনলোড শেষ হওয়ার পর সার্ভার থেকে আউটপুট ফাইল ডিলিট করে দেওয়া
-                    fs.unlink(outputPath, () => {});
-                });
+                fs.unlink(outputPath, () => {});
             });
-        });
+        } else {
+            console.error('-> Converted PDF not found.');
+            return res.status(500).send('Error: PDF generation failed.');
+        }
     });
-});
-
-app.use((err, req, res, next) => {
-    console.error('-> Global Server Error:', err.stack);
-    res.status(500).send('Error: Internal Server Crash occurred.');
 });
 
 const PORT = process.env.PORT || 10000;
