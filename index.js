@@ -17,11 +17,11 @@ const upload = multer({
 });
 
 app.get('/', (req, res) => {
-    res.status(200).send('Smart Converter Server is Running!');
+    res.status(200).send('Smart Multi-Format Converter Server is Running!');
 });
 
 app.post('/convert', upload.single('file'), async (req, res) => {
-    console.log('-> Convert request received!');
+    console.log('-> Multi-format convert hit received!');
 
     if (!req.file) {
         return res.status(400).send('Error: No file uploaded by client.');
@@ -33,13 +33,13 @@ app.post('/convert', upload.single('file'), async (req, res) => {
 
     const supportedExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
     if (!supportedExts.includes(ext)) {
-        return res.status(400).send('Error: Unsupported file format.');
+        return res.status(400).send('Error: Unsupported file format. Only Word, Excel, and PPT are allowed.');
     }
 
     libre.convert(inputBuffer, '.pdf', undefined, (err, doneBuffer) => {
         if (err) {
             console.error('-> Conversion Error:', err);
-            return res.status(500).send('Error: Failed to convert document.');
+            return res.status(500).send('Error: Failed to convert document using library.');
         }
 
         const outputFileName = `Converted-${Date.now()}.pdf`;
@@ -47,9 +47,11 @@ app.post('/convert', upload.single('file'), async (req, res) => {
 
         fs.writeFileSync(outputPath, doneBuffer);
 
-        console.log('-> Conversion successful, sending file...');
+        console.log('-> Conversion successful, sending file back...');
         res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-            if (dlErr) console.error('-> Download error:', dlErr);
+            if (dlErr) {
+                console.error('-> Download error:', dlErr);
+            }
             fs.unlink(outputPath, () => {});
         });
     });
