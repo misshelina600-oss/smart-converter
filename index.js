@@ -4,6 +4,9 @@ const libre = require('libreoffice-convert');
 const fs = require('fs');
 const path = require('path');
 
+// লিনাক্স/ডকার কন্টেইনারের জন্য soffice বাইনারি পাথ সেট করে দেওয়া
+libre.binPath = '/usr/bin/soffice';
+
 const app = express();
 
 const uploadDir = path.join(__dirname, 'uploads');
@@ -40,19 +43,29 @@ app.post('/convert', upload.single('file'), (req, res) => {
 
     const inputPath = req.file.path;
     const originalName = path.parse(req.file.originalname).name;
-    const outputFileName = `${originalName}-${Date.now()}.pdf`;
+    
+    // ফাইলের নামের স্পেস বা বিশেষ ক্যারেক্টারজনিত সমস্যা এড়াতে সেফ ইনপুট পাথ তৈরি
+    const safeInputPath = path.join(uploadDir, `input-${Date.now()}.docx`);
+    const outputFileName = `Converted-${Date.now()}.pdf`;
     const outputPath = path.join(uploadDir, outputFileName);
 
-    fs.readFile(inputPath, (err, fileData) => {
+    // ফাইল রিনেম করে নিরাপদ পথে রূপান্তর করা
+    try {
+        fs.renameSync(inputPath, safeInputPath);
+    } catch (e) {
+        console.log('-> Error renaming file:', e);
+    }
+
+    fs.readFile(safeInputPath, (err, fileData) => {
         if (err) {
             console.log('-> Error reading input file:', err);
-            fs.unlink(inputPath, () => {});
+            fs.unlink(safeInputPath, () => {});
             return res.status(500).send('Error reading uploaded file.');
         }
 
         libre.convert(fileData, '.pdf', undefined, (convErr, done) => {
             // ইনপুট ফাইল সাথে সাথে মুছে ফেলা নিরাপদ
-            fs.unlink(inputPath, () => {});
+            fs.unlink(safeInputPath, () => {});
 
             if (convErr) {
                 console.error('-> LibreOffice Conversion error:', convErr);
