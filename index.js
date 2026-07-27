@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const libre = require('libreoffice-convert');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -27,7 +27,6 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         return res.status(400).send('Error: No file uploaded by client.');
     }
 
-    const inputBuffer = req.file.buffer;
     const ext = path.extname(req.file.originalname).toLowerCase();
     const originalName = path.parse(req.file.originalname).name;
 
@@ -36,28 +35,53 @@ app.post('/convert', upload.single('file'), async (req, res) => {
         return res.status(400).send('Error: Unsupported file format. Only Word, Excel, and PPT are allowed.');
     }
 
-    // 🔥 পেজ ব্রেক এবং মাঝখানের ফাঁকা জায়গার সমস্যা সমাধানের জন্য A4 পেজ প্রপার্টি ফিল্টার যুক্ত করা হলো
-    const filterOptions = 'writer_pdf_Export:{"PageSize":{"type":"long","value":0},"PaperFormat":{"type":"string","value":"A4"}}';
+    const uniqueId = Date.now();
+    const inputPath = path.join(uploadDir, `input-${uniqueId}${ext}`);
+    const outputPdfPath = path.join(uploadDir, `input-${uniqueId}.pdf`);
 
-    libre.convert(inputBuffer, '.pdf', filterOptions, (err, doneBuffer) => {
-        if (err) {
-            console.error('-> Conversion Error:', err);
-            return res.status(500).send('Error: Failed to convert document using library.');
-        }
+    try {
+        // ফাইলটি সাময়িকভাবে সার্ভারে সেভ করা হচ্ছে যাতে LibreOffice সরাসরি প্রসেস করতে পারে
+        fs.writeFileSync(inputPath, req.file.buffer);
 
-        const outputFileName = `Converted-${Date.now()}.pdf`;
-        const outputPath = path.join(uploadDir, outputFileName);
-
-        fs.writeFileSync(outputPath, doneBuffer);
-
-        console.log('-> Conversion successful, sending file back...');
-        res.download(outputPath, `${originalName}.pdf`, (dlErr) => {
-            if (dlErr) {
-                console.error('-> Download error:', dlErr);
+        // 🔥 সরাসরি সিস্টেম লেভেলে LibreOffice হেডলেস কমান্ড ব্যবহার করা হচ্ছে যা অরিজিনাল ফরম্যাট ও লেআউট হুবহু বজায় রাখবে
+        execFile('soffice', [
+            '--headless',
+            '--convert-to', 'pdf',
+            '--outdir', uploadDir,
+            inputPath
+        ], { timeout: 60000 }, (error, stdout, stderr) => {
+            
+            // ইনপুট ফাইল মুছে ফেলা হচ্ছে
+            if (fs.existsSync(inputPath)) {
+                fs.unlinkSync(inputPath);
             }
-            fs.unlink(outputPath, () => {});
+
+            if (error) {
+                console.error('-> Conversion Error:', error);
+                if (fs.existsSync(outputPdfPath)) fs.unlinkSync(outputPdfPath);
+                return res.status(500).send('Error: Failed to convert document layout.');
+            }
+
+            if (!fs.existsSync(outputPdfPath)) {
+                return res.status(500).send('Error: PDF conversion failed to generate output file.');
+            }
+
+            console.log('-> Conversion successful, sending file back...');
+            res.download(outputPdfPath, `${originalName}.pdf`, (dlErr) => {
+                if (dlErr) {
+                    console.error('-> Download error:', dlErr);
+                }
+                if (fs.existsSync(outputPdfPath)) {
+                    fs.unlinkSync(outputPdfPath);
+                }
+            });
         });
-    });
+
+    } catch (e) {
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        console.error('-> Server Process Error:', e);
+        return res.status(500).send('Error: ' + e.message);
+    }
 });
 
 const PORT = process.env.PORT || 10000;
